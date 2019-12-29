@@ -73,12 +73,7 @@ namespace PhotoSlideshow.Models
             return photo;
         }
 
-        /*   public List<Slide> DeepCopyFirstSlides()
-          {
-              List<Slide> slides = this.FirstSolutionSlides.ConvertAll(x => new Slide(x.Id, x.Photos));
-              return slides;
-          }*/
-
+       
         public List<Slide> DifferentPositionsSlides(List<Slide> slide)
         {
             for (int i = 0; i < slide.Count; i++)
