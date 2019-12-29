@@ -1,9 +1,9 @@
-﻿using PhotoSlideshow.Extensions;
+using PhotoSlideshow.Extensions;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.Serialization.Formatters.Binary;
+
 using System.Text;
 
 namespace PhotoSlideshow.Models
@@ -13,13 +13,11 @@ namespace PhotoSlideshow.Models
         public List<Slide> Slides { get; set; }
         public int InterestFactor { get; set; } = int.MinValue;
         private int TotalIterations;
-        private double PerturbationPercentage  = 0.5;
-
+        private double PerturbationPercentage = 0.5;
         public Solution()
         {
             this.Slides = new List<Slide>();
         }
-
         public Solution(List<Slide> Slides)
         {
             this.Slides = Slides;
@@ -56,65 +54,93 @@ namespace PhotoSlideshow.Models
                 slideId++;
             }
         }
-        //Additional features
+
+        #region Additional features
         //Change position of first slide with last
         public List<Photo> ChangePosition(List<Photo> photo)
         {
-            //photo = photo.OrderByDescending(photo )
+            photo.OrderByDescending(x => x.Id);
             return photo;
-        } 
-
+        }
         public List<Photo> ChangePositionOfPhoto(List<Photo> photo)
         {
-            for(int i=0;i<photo.Count; i++)
+            for (int i = 0; i < photo.Count; i++)
             {
                 var temp = photo[i];
                 photo[i] = photo[i + 1];
                 photo[i + 1] = temp;
-            }   
+            }
             return photo;
         }
 
-        public List <Slide> DifferentPositionsSlides(List <Slide> slide)
-        {
-            var temp = slide[0];
-            slide[0] = slide[slide.Count - 1];
-            slide[slide.Count - 1] = temp;
+        /*   public List<Slide> DeepCopyFirstSlides()
+          {
+              List<Slide> slides = this.FirstSolutionSlides.ConvertAll(x => new Slide(x.Id, x.Photos));
+              return slides;
+          }*/
 
+        public List<Slide> DifferentPositionsSlides(List<Slide> slide)
+        {
+            for (int i = 0; i < slide.Count; i++)
+            {
+                var temp = slide[i];
+                slide[i] = slide[i + 1];
+                slide[i + 1] = temp;
+            }
             return slide;
         }
-        
+        #endregion
+
         public void GenerateSolutionWithHeuristic(List<Photo> photos)
         {
-            int slideId = 0;
             Random random = new Random();
-            List<int> photosToSkip = new List<int>();
+            int atThisNumber = Convert.ToInt32(Math.Sqrt(photos.Count));
+            int slideId = 0;
+            int photosCount = photos.Count();
 
-            while (photosToSkip.Count() < photos.Count())
+            for (int i = 0; i < photosCount; i++)
             {
-                
-                Photo photo = photos.Where(x =>  x.Id % 2 ==0).First();
+                List<Photo> tempPhotos = new List<Photo>(photos.Skip(i * i).Take(atThisNumber - 1));
+                int tempPhotosCount = tempPhotos.Count();
+                int iterationCount = 0;
 
-                List<Photo> photosToAdd = new List<Photo>()
+                while (iterationCount < tempPhotosCount)
                 {
-                    photo
-                };
+                    Photo photo = tempPhotos.FirstOrDefault();
 
-                if (photo.Orientation == Orientation.V)
-                {
-                    Photo secondPhoto = photos.FirstOrDefault(x => x.Id != photo.Id && x.Orientation.Equals(Orientation.V) && !photosToSkip.Contains(x.Id));
-                    if (secondPhoto != null)
+                    List<Photo> photosToAdd = new List<Photo>()
                     {
-                        photosToAdd.Add(secondPhoto);
-                        photosToSkip.Add(secondPhoto.Id);
-                    }
-                }
+                        photo
+                    };
 
-                photosToSkip.Add(photo.Id);
-                this.Slides.Add(new Slide(slideId, photosToAdd));
-                slideId++;
+                    if (photo.Orientation == Orientation.V)
+                    {
+                        Photo secondPhoto = tempPhotos
+                            .Where(x => x.Id != photo.Id && x.Orientation.Equals(Orientation.V))
+                            .OrderByDescending(x =>
+                                x.Tags.Where(t => !photo.Tags.Contains(t)).Count() +
+                                x.Tags.Where(t => photo.Tags.Contains(t)).Count() +
+                                photo.Tags.Where(t => x.Tags.Contains(t)).Count())
+                            .FirstOrDefault();
+
+                        if (secondPhoto != null)
+                        {
+                            photosToAdd.Add(secondPhoto);
+                            tempPhotos.Remove(secondPhoto);
+
+                            iterationCount++;
+                        }
+                    }
+
+                    this.Slides.Add(new Slide(slideId, photosToAdd));
+                    tempPhotos.Remove(photo);
+
+                    iterationCount++;
+                    slideId++;
+                }
             }
         }
+
         public void Mutate(List<Slide> slides, List<int> randomNumbers)
         {
             Random random = new Random();
@@ -153,7 +179,6 @@ namespace PhotoSlideshow.Models
             else if (swapOrChange < 7)
             {
                 slidesToSwap = randomNumbers.OrderBy(x => random.Next()).Take(2).ToList();
-
                 Slide tempSlide = slides[slidesToSwap.FirstOrDefault()];
                 slides[slidesToSwap.FirstOrDefault()] = slides[slidesToSwap.LastOrDefault()];
                 slides[slidesToSwap.LastOrDefault()] = tempSlide;
@@ -166,8 +191,6 @@ namespace PhotoSlideshow.Models
                 slides.Insert(slidesToSwap.LastOrDefault(), slide);
             }
         }
-
-
 
         public void HillClimbing(int numberOfIterations)
         {
@@ -205,7 +228,7 @@ namespace PhotoSlideshow.Models
 
             for (int i = 0; i < numberOfIterations; i++)
             {
-                List<Slide> tempSolution = this.Slides;
+                List<Slide> tempSolution = DifferentPositionsSlides(this.Slides);
                 List<int> slidesToSwap = randomNumbers.OrderBy(x => random.Next()).Take(2).ToList();
 
                 Mutate(tempSolution, randomNumbers);
@@ -254,10 +277,11 @@ namespace PhotoSlideshow.Models
                 }
             }
         }
-       
+
+        #region ILS
         public void IteratedLocalSearch(int totalIterations, long IdealSolution)
         {
-            int fileToRead = 2;
+            int fileToRead = 3;
             List<int> DistributionOfTime = GetRandomIterations(Convert.ToInt32(0.5 * TotalIterations)); // T
             Random random = new Random();
             Solution solution = new Solution();
@@ -265,15 +289,13 @@ namespace PhotoSlideshow.Models
 
             List<Slide> slides = new List<Slide>();
             Instance instance = Extensions.IO.ReadInput(files[fileToRead]);
-            GenerateSolutionWithHeuristic(instance.Photos.ToList());
-           //GenerateRandomSolution(instance.Photos.OrderBy(x => random.Next()).ToList());// S
-           
+            // GenerateSolutionWithHeuristic(instance.Photos.ToList());
+            GenerateRandomSolution(instance.Photos.OrderBy(x => random.Next()).ToList());// S
 
-
-            List <Slide> S = Slides;
-            List <Slide> H = S; // H
-            List <Slide> Best = S; // Best
-            List <Slide> R;
+            List<Slide> S = Slides;
+            List<Slide> H = S; // H
+            List<Slide> Best = S; // Best
+            List<Slide> R;
 
             Random rnd = new Random();
 
@@ -283,7 +305,7 @@ namespace PhotoSlideshow.Models
 
                 while (CalculateInterestFactor(S) != IdealSolution && CurrentIterationsPerDistribution > 0 && TotalIterations > 0)
                 {
-                     R = S;
+                    R = S;
                     Random ran = new Random();
                     List<int> randomNumbers = new List<int>();
                     for (int i = 0; i < this.Slides.Count(); i++)
@@ -292,7 +314,7 @@ namespace PhotoSlideshow.Models
                     }
 
                     Mutate(R, randomNumbers);
-                    
+
 
                     if (CalculateInterestFactor(R) > CalculateInterestFactor(S))
                         S = R;
@@ -309,16 +331,16 @@ namespace PhotoSlideshow.Models
                 H = NewHomeBase(H, S);
                 S = Perturb(H);
             }
-            Console.WriteLine("Interes factor: " + CalculateInterestFactor(Best));
+            Console.WriteLine("Interes factor for best Solution: " + CalculateInterestFactor(Best));
         }
-        public List <Slide> NewHomeBase(List <Slide> H, List<Slide> S)
+        public List<Slide> NewHomeBase(List<Slide> H, List<Slide> S)
         {
             if (CalculateInterestFactor(S) >= CalculateInterestFactor(H))
                 return S;
             else
                 return H;
         }
-        public List <Slide> Perturb(List <Slide> H)
+        public List<Slide> Perturb(List<Slide> H)
         {
             int MutationCounter = Convert.ToInt32(PerturbationPercentage * H.Count);
 
@@ -334,7 +356,7 @@ namespace PhotoSlideshow.Models
 
             return H;
         }
-       
+
         public List<int> GetRandomIterations(int count)
         {
             // min 30% max 70% e totaliterations
@@ -350,6 +372,6 @@ namespace PhotoSlideshow.Models
 
             return randomIterations;
         }
-       
+        #endregion
     }
 }
